@@ -1235,8 +1235,8 @@ body{background:var(--bg);color:var(--txt);font-family:'DM Sans',sans-serif;min-
     </div>
     <!-- Custom Words Admin Section -->
     <div class="asec" id="adm-cw-section">
-      <h3>✏️ Eigene Begriffe hinzufügen</h3>
-      <p style="font-size:.78rem;color:rgba(255,255,255,.5);margin-bottom:10px">Begriffe werden für alle Besucher gespeichert</p>
+      <h3>✏️ Wörter & Begriffe verwalten</h3>
+      <p style="font-size:.78rem;color:rgba(255,255,255,.5);margin-bottom:10px">Eigene Begriffe werden dauerhaft für alle Spieler gespeichert und kommen in den Spicy-Pool</p>
       <div class="adm-words-tabs" id="adm-words-tabs">
         <button class="adm-words-tab on" onclick="admCwSetGame('ww',this)">🤔 WW</button>
         <button class="adm-words-tab" onclick="admCwSetGame('wop_truth',this)">💬 WOP W</button>
@@ -1257,12 +1257,18 @@ body{background:var(--bg);color:var(--txt);font-family:'DM Sans',sans-serif;min-
       </div>
       <!-- Imposter pair input -->
       <div id="adm-cw-pair" class="adm-words-form" style="display:none;flex-wrap:wrap;gap:6px">
-        <input class="adm-words-input" id="adm-words-w1" placeholder="Wort (normal)…" maxlength="60" style="flex:1;min-width:120px">
+        <input class="adm-words-input" id="adm-words-w1" placeholder="Wort (Bürger)…" maxlength="60" style="flex:1;min-width:120px">
         <input class="adm-words-input" id="adm-words-w2" placeholder="Wort (Imposter)…" maxlength="60" style="flex:1;min-width:120px">
         <button class="btn bs" style="width:100%;padding:8px" onclick="admCwAdd()">+ Wortpaar hinzufügen</button>
       </div>
       <div class="adm-words-status" id="adm-words-status">Lädt…</div>
-      <div class="adm-words-list" id="adm-words-list"></div>
+      <!-- View toggle: custom vs all words -->
+      <div id="adm-view-toggle" style="display:flex;gap:6px;margin:10px 0 4px">
+        <button id="adm-view-custom" class="adm-words-tab on" onclick="admShowView('custom')" style="font-size:.72rem">✏️ Eigene</button>
+        <button id="adm-view-builtin" class="adm-words-tab" onclick="admShowView('builtin')" style="font-size:.72rem">📚 Alle Wörter</button>
+      </div>
+      <div id="adm-words-list"></div>
+      <div id="adm-builtin-list" style="display:none"></div>
     </div>
         <button class="lbtn" onclick="goHome()">🚪 Zurück zum Spiel</button>
   </div>
@@ -1396,6 +1402,12 @@ body{background:var(--bg);color:var(--txt);font-family:'DM Sans',sans-serif;min-
   <div class="wrap">
     <div class="gh"><div class="ghr"><span style="font-size:1.5rem">🕵️</span><h2>Imposter</h2></div><p>Einer kennt das echte Wort nicht — findet den Imposter!</p></div>
 
+    <!-- Online Banner -->
+    <div id="imp-online-banner" class="bq-online-banner" style="display:none">
+      <div style="font-size:.82rem;color:var(--g2);font-weight:700">🟢 Online-Lobby aktiv</div>
+      <div style="font-size:.75rem;color:var(--muted);margin-top:3px">Jeder sieht nur sein eigenes Wort — der Host steuert das Spiel</div>
+    </div>
+
     <!-- Setup -->
     <div class="iphase on" id="ip-setup">
       <div class="mtog">
@@ -1443,6 +1455,15 @@ body{background:var(--bg);color:var(--txt);font-family:'DM Sans',sans-serif;min-
         <div style="color:var(--muted);font-size:.85rem;line-height:1.5">Jeder beschreibt sein Wort in <strong style="color:var(--txt)">einem kurzen Satz</strong>.<br>Wer klingt verdächtig? Wer ist der Imposter?</div>
       </div>
       <button class="btn bp" onclick="startIV()">Zur Abstimmung →</button>
+    </div>
+
+    <!-- Online Warten -->
+    <div class="iphase" id="ip-online-wait">
+      <div style="text-align:center;padding:30px 0">
+        <div style="font-size:2.4rem;margin-bottom:12px;animation:tapBounce 1.5s ease-in-out infinite">⏳</div>
+        <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:1.05rem;margin-bottom:8px">Warte auf Host…</div>
+        <div style="color:var(--muted);font-size:.85rem">Der Host startet die nächste Phase</div>
+      </div>
     </div>
 
     <!-- Abstimmung -->
@@ -1905,6 +1926,9 @@ function toggleTheme(){
 // Pre-load custom words from Supabase on page load
 loadCustomWordsIntoPool();
 function init(id){
+  // Always reload custom words when entering a game page so new admin words are available
+  const gamePagesForWords = ['ww','wop','imp','ihnn','hk','hs','gk','fl','draw'];
+  if(gamePagesForWords.includes(id)) loadCustomWordsIntoPool();
   if(id==='ww')initWW();
   if(id==='wop')initWOP();
   if(id==='dice')initDice();
@@ -1968,6 +1992,16 @@ function updateAdmin(){
 // ═══════ ADMIN CUSTOM WORDS ═══════
 let _admCwGame = 'ww'; // current selected game
 let _admCwCache = {}; // cache of loaded words
+let _admCurrView = 'custom'; // 'custom' or 'builtin'
+
+function admShowView(v) {
+  _admCurrView = v;
+  document.getElementById('adm-view-custom').classList.toggle('on', v==='custom');
+  document.getElementById('adm-view-builtin').classList.toggle('on', v==='builtin');
+  document.getElementById('adm-words-list').style.display = v==='custom' ? 'block' : 'none';
+  document.getElementById('adm-builtin-list').style.display = v==='builtin' ? 'block' : 'none';
+  if (v==='builtin') admRenderBuiltin();
+}
 
 function admCwSetGame(game, btn) {
   _admCwGame = game;
@@ -1981,6 +2015,11 @@ function admCwSetGame(game, btn) {
   document.getElementById('adm-cw-pair').style.display   = isImp ? 'flex' : 'none';
   // Hide mode selector for imp, draw, and __all__ views
   document.getElementById('adm-words-mode-row').style.display = (isImp || isAll || isDraw) ? 'none' : 'flex';
+  // Hide view toggle for __all__
+  const vt = document.getElementById('adm-view-toggle');
+  if (vt) vt.style.display = isAll ? 'none' : 'flex';
+  // Reset to custom view
+  admShowView('custom');
   admCwLoad();
 }
 
@@ -1998,7 +2037,7 @@ async function admCwLoad() {
     _admCwCache[_admCwGame] = rows || [];
     admCwRender(rows || []);
     statusEl.textContent = rows?.length
-      ? `${rows.length} Begriff${rows.length !== 1 ? 'e' : ''} gespeichert`
+      ? `${rows.length} eigene${rows.length !== 1 ? ' Begriffe' : ' Begriff'} gespeichert`
       : 'Noch keine eigenen Begriffe' + (_admCwGame === '__all__' ? '' : ' für dieses Spiel');
   } catch(e) {
     statusEl.textContent = '❌ Fehler beim Laden';
@@ -2015,24 +2054,94 @@ function admCwRender(rows) {
   }
   const gameLabels = {ww:'🤔 WW',wop_truth:'💬 WOP W',wop_dare:'⚡ WOP P',ih:'🙅 IHNN',hk:'🔥 HK',imp:'🕵️ IMP',draw:'🎨 Malen'};
   listEl.innerHTML = rows.map(row => {
-    let display;
+    let display, editBtn = '';
     if (row.game === 'imp') {
       try {
         const p = JSON.parse(row.content);
         display = `<b>${p.w}</b> <span style="color:rgba(255,255,255,.4)">↔</span> <b>${p.h}</b>`;
       } catch { display = row.content; }
     } else {
-      display = row.content;
+      display = `<span id="adm-word-txt-${row.id}">${row.content}</span>`;
+      editBtn = `<button class="adm-word-del" onclick="admCwEdit(${row.id},'${(row.content||'').replace(/'/g,"\\'")}',this)" title="Bearbeiten" style="color:var(--b2)">✏️</button>`;
     }
     const modeTag = (row.mode && row.mode !== 'normal' && row.game !== 'draw')
       ? `<span style="font-size:.62rem;color:${row.mode==='spicy'?'#fc5c8a':'#ff7700'};margin-left:4px">${row.mode==='spicy'?'🌶':'🔥'}</span>` : '';
     const gameTag = _admCwGame === '__all__'
       ? `<span style="font-size:.62rem;color:var(--muted);margin-left:5px">${gameLabels[row.game]||row.game}</span>` : '';
-    return `<div class="adm-word-item">
+    return `<div class="adm-word-item" id="adm-row-${row.id}">
       <span style="flex:1">${display}${modeTag}${gameTag}</span>
+      ${editBtn}
       <button class="adm-word-del" onclick="admCwDelete(${row.id})" title="Löschen">🗑</button>
     </div>`;
   }).join('');
+}
+
+async function admCwEdit(id, currentVal, btn) {
+  const row = document.getElementById('adm-row-' + id);
+  if (!row) return;
+  const newVal = prompt('Begriff bearbeiten:', currentVal);
+  if (newVal === null || newVal.trim() === '') return;
+  try {
+    await sbREST('custom_words', 'PATCH', `id=eq.${id}`, { content: newVal.trim() });
+    toast('✅ Begriff aktualisiert!');
+    _customWordsLoaded = false;
+    await admCwLoad();
+  } catch(e) { toast('❌ Fehler beim Bearbeiten'); }
+}
+
+// ── Render all built-in words for overview ──
+function admRenderBuiltin() {
+  const el = document.getElementById('adm-builtin-list');
+  if (!el) return;
+  const game = _admCwGame;
+  if (game === '__all__') { el.innerHTML = '<div style="color:var(--muted);font-size:.8rem">Wähle ein Spiel für die Übersicht</div>'; return; }
+
+  let items = [];
+  const modeLabels = { normal: '😊', spicy: '🌶', extrem: '🔥' };
+
+  if (game === 'imp') {
+    ['normal','spicy'].forEach(m => {
+      (IW[m]||[]).forEach(pair => {
+        items.push({ text: `${pair.w} ↔ ${pair.h}`, mode: m });
+      });
+    });
+  } else if (game === 'draw') {
+    [...DG_WORDS_EASY, ...DG_WORDS_HARD].forEach(w => items.push({ text: w, mode: 'normal' }));
+  } else {
+    const dKey = game === 'wop_truth' ? 'wt' : game === 'wop_dare' ? 'wd' : game;
+    const data = D[dKey] || {};
+    ['normal','spicy','extrem'].forEach(m => {
+      if (data[m]) data[m].forEach(w => items.push({ text: w, mode: m }));
+    });
+  }
+
+  if (!items.length) { el.innerHTML = '<div style="color:var(--muted);font-size:.8rem;padding:8px 0">Keine Wörter gefunden.</div>'; return; }
+
+  const search = document.getElementById('adm-builtin-search')?.value?.toLowerCase() || '';
+  const filtered = search ? items.filter(i => i.text.toLowerCase().includes(search)) : items;
+  const byMode = { normal: filtered.filter(i=>i.mode==='normal'), spicy: filtered.filter(i=>i.mode==='spicy'), extrem: filtered.filter(i=>i.mode==='extrem') };
+
+  el.innerHTML = `
+    <div style="display:flex;gap:6px;margin-bottom:8px">
+      <input id="adm-builtin-search" class="adm-words-input" placeholder="Suchen…" oninput="admRenderBuiltin()" style="flex:1">
+    </div>
+    <div style="font-size:.72rem;color:var(--muted);margin-bottom:10px">
+      ${filtered.length} von ${items.length} Wörtern
+      ${byMode.spicy.length ? `&nbsp;·&nbsp;<span style="color:#fc5c8a">🌶 ${byMode.spicy.length} Spicy</span>` : ''}
+      ${byMode.extrem.length ? `&nbsp;·&nbsp;<span style="color:#ff7700">🔥 ${byMode.extrem.length} Extrem</span>` : ''}
+    </div>
+    <div style="max-height:320px;overflow-y:auto">
+    ${filtered.slice(0,300).map(i =>
+      `<div class="adm-word-item" style="opacity:${i.mode==='spicy'?'1':i.mode==='extrem'?'0.9':'0.7'}">
+        <span style="flex:1;font-size:.82rem">${i.text}</span>
+        <span style="font-size:.75rem;color:${i.mode==='spicy'?'#fc5c8a':i.mode==='extrem'?'#ff7700':'var(--muted)'}">${modeLabels[i.mode]||''}</span>
+      </div>`
+    ).join('')}
+    ${filtered.length > 300 ? `<div style="color:var(--muted);font-size:.75rem;padding:6px 0">… und ${filtered.length-300} weitere</div>` : ''}
+    </div>`;
+  // Re-attach search input listener after innerHTML replace
+  const si = document.getElementById('adm-builtin-search');
+  if(si) { si.value = search; setTimeout(()=>si.focus(),0); }
 }
 
 async function admCwAdd() {
@@ -2066,7 +2175,7 @@ async function admCwAdd() {
     toast('✅ Begriff gespeichert!');
     await admCwLoad();
     _customWordsLoaded = false;
-    _dgWordsLoaded = false; // invalidate draw word cache too
+    _dgWordsLoaded = false;
   } catch(e) {
     toast('❌ Fehler beim Speichern');
     if (statusEl) statusEl.textContent = '❌ Fehler: ' + e.message;
@@ -2074,6 +2183,7 @@ async function admCwAdd() {
 }
 
 async function admCwDelete(id) {
+  if (!confirm('Wirklich löschen?')) return;
   try {
     await sbREST('custom_words', 'DELETE', `id=eq.${id}`);
     toast('🗑 Gelöscht');
@@ -2089,7 +2199,8 @@ var _customWordsLoaded = false;
 let _dgWordsLoaded = false;
 
 async function loadCustomWordsIntoPool() {
-  if (_customWordsLoaded) return;
+  // Always reload to pick up newly added words
+  _customWordsLoaded = false;
   try {
     const rows = await sbREST('custom_words', 'GET', 'order=created_at.desc&limit=500');
     if (!rows?.length) { _customWordsLoaded = true; return; }
@@ -2106,16 +2217,23 @@ async function loadCustomWordsIntoPool() {
           }
         } catch {}
       } else if (game === 'draw') {
-        // Inject into DG_WORDS pool for Malen & Raten
-        if (!DG_WORDS_EASY.includes(content) && !DG_WORDS_HARD.includes(content) && !DG_WORDS_CUSTOM.includes(content)) {
-          DG_WORDS_CUSTOM.push(content);
+        if (!DG_WORDS_EASY.includes(content) && !DG_WORDS_HARD.includes(content) && !(window.DG_WORDS_CUSTOM||[]).includes(content)) {
+          window.DG_WORDS_CUSTOM = window.DG_WORDS_CUSTOM || [];
+          window.DG_WORDS_CUSTOM.push(content);
         }
       } else {
+        // Map game key to D object key
         const dKey = game === 'wop_truth' ? 'wt' : game === 'wop_dare' ? 'wd' : game;
-        if (D[dKey]?.[mode]) {
-          if (!D[dKey][mode].includes(content)) D[dKey][mode].push(content);
-        } else if (D[dKey]) {
-          D[dKey][mode] = [content];
+        if (!D[dKey]) return;
+        // Always inject into spicy (admin words are always spicy)
+        const targetMode = mode || 'spicy';
+        D[dKey][targetMode] = D[dKey][targetMode] || [];
+        if (!D[dKey][targetMode].includes(content)) {
+          D[dKey][targetMode].push(content);
+        }
+        // Also make sure spicy is always unlocked/available regardless of toggle
+        if (targetMode === 'spicy' && D[dKey].normal && !D[dKey].spicy) {
+          D[dKey].spicy = [content];
         }
       }
     });
@@ -2358,29 +2476,92 @@ function renderDR(){
   </div>`).join('');
 }
 
-// ═══════ UNDERCOVER ═══════
+// ═══════ UNDERCOVER / IMPOSTER ═══════
 let impS={};
 function initImp(){
   modes.imp=modes.imp||'normal';
-  impS={phase:'setup',cur:0,impIdx:-1,wd:null,votes:{}};
+  impS={phase:'setup',cur:0,impIdx:-1,wd:null,votes:{},online:!!(LB.id),myWord:null,myIsImp:false,myRevealed:false};
   const pl=document.getElementById('ipplist');
   pl.innerHTML=players.length?players.map((p,i)=>`<div class="chip"><div class="dot" style="background:${PC[i%PC.length]}"></div>${p}</div>`).join(''):'<p style="color:var(--muted);font-size:.84rem">Füge Spieler auf der Startseite hinzu!</p>';
+  // Online: show lobby info
+  const onlineBanner = document.getElementById('imp-online-banner');
+  if(onlineBanner) onlineBanner.style.display = LB.id ? 'block' : 'none';
   showIP('setup');
 }
-function showIP(ph){document.querySelectorAll('.iphase').forEach(e=>e.classList.remove('on'));document.getElementById('ip-'+ph).classList.add('on');}
-function startImp(){
+function showIP(ph){document.querySelectorAll('.iphase').forEach(e=>e.classList.remove('on'));document.getElementById('ip-'+ph)?.classList.add('on');}
+
+async function startImp(){
+  if(LB.id && !LB.isHost){toast('Nur der Host kann das Spiel starten!');return;}
   if(players.length<3){toast('Mindestens 3 Spieler nötig!');return;}
   gPlayed++;
   const pool=getImpPool();
   impS.wd=pool[Math.floor(Math.random()*pool.length)];
   impS.impIdx=Math.floor(Math.random()*players.length);
-  impS.cur=0;impS.votes={};
-  showNextI();
+  impS.cur=0;impS.votes={};impS.myRevealed=false;
+
+  if(LB.id && LB.isHost){
+    // Online: broadcast full game state — each player calculates their own role client-side
+    await sbREST('lobbies','PATCH','id=eq.'+LB.id,{
+      state:'playing', game:'imp',
+      options:{
+        event:'imp_start',
+        impIdx: impS.impIdx,
+        word: impS.wd.w,
+        hint: impS.wd.h,
+        players: players,
+        _ts: Date.now()
+      }
+    }).catch(()=>{});
+    // Host loads their own word
+    const myIdx = players.indexOf(LB.myName);
+    impS.myIsImp = (myIdx === impS.impIdx);
+    impS.myWord = impS.myIsImp ? impS.wd.h : impS.wd.w;
+    impS.myRevealed = false;
+    showImpOnlineMyWord();
+  } else {
+    // Offline: pass-the-phone mode
+    showNextI();
+  }
 }
+
+// Online: show each player's own word on their own device
+function showImpOnlineMyWord(){
+  const myName = LB.myName || players[0] || '?';
+  document.getElementById('ipcur').textContent = myName;
+  const flip=document.getElementById('sbox-flip');
+  flip.classList.remove('flipped','glow-citizen','glow-impostor');
+  document.getElementById('isword').textContent='????';
+  document.getElementById('islbl').textContent='';
+  document.getElementById('irbanner').style.display='none';
+  document.getElementById('irbanner').className='role-banner';
+  document.getElementById('isbox').className='sbox-back';
+  document.getElementById('sbox-wrap').style.pointerEvents='auto';
+  impS.myRevealed = false;
+  const passbtn = document.getElementById('ipassbtn');
+  passbtn.disabled=true;
+  passbtn.textContent='✓ Gesehen — weiter →';
+  passbtn.onclick = impOnlineDone;
+  showIP('reveal');
+}
+
+function impOnlineDone(){
+  document.getElementById('sbox-flip').classList.remove('glow-citizen','glow-impostor');
+  if(LB.isHost){
+    // Host advances everyone to discussion phase
+    sbREST('lobbies','PATCH','id=eq.'+LB.id,{
+      options:{ event:'imp_discuss', _ts:Date.now() }
+    }).catch(()=>{});
+    showIP('discuss');
+  } else {
+    // Guests: show "waiting for host" screen
+    const waitEl = document.getElementById('ip-online-wait');
+    if(waitEl){ showIP('online-wait'); } else { showIP('discuss'); }
+  }
+}
+
 function showNextI(){
   const p=players[impS.cur];
   document.getElementById('ipcur').textContent=p;
-  // Reset flip card to front
   const flip=document.getElementById('sbox-flip');
   flip.classList.remove('flipped');
   document.getElementById('isword').textContent='????';
@@ -2390,14 +2571,28 @@ function showNextI(){
   document.getElementById('isbox').className='sbox-back';
   document.getElementById('sbox-wrap').style.pointerEvents='auto';
   document.getElementById('ipassbtn').disabled=true;
+  document.getElementById('ipassbtn').textContent='✓ Gesehen — Gerät weitergeben →';
+  document.getElementById('ipassbtn').onclick = ()=>{document.getElementById('sbox-flip').classList.remove('glow-citizen','glow-impostor');nextIP();};
   showIP('reveal');
 }
 function revealI(){
   const flip=document.getElementById('sbox-flip');
-  if(flip.classList.contains('flipped'))return;
-  const isImp=impS.cur===impS.impIdx;
-  const word=isImp?impS.wd.h:impS.wd.w;
-  // vibrate on mobile
+  if(flip.classList.contains('flipped')) return;
+  // Online: block if already revealed
+  if(LB.id && impS.myRevealed) return;
+
+  let isImp, word;
+  if(LB.id){
+    // Online mode: use pre-loaded word for THIS player only
+    isImp = impS.myIsImp;
+    word = impS.myWord;
+    if(!word){ toast('Warte auf Spielstart…'); return; }
+    impS.myRevealed = true;
+  } else {
+    isImp = impS.cur===impS.impIdx;
+    word = isImp?impS.wd.h:impS.wd.w;
+  }
+
   if(navigator.vibrate)navigator.vibrate([30,20,60]);
   flip.classList.add('flipped');
   document.getElementById('sbox-wrap').style.pointerEvents='none';
@@ -2444,30 +2639,41 @@ function spawnConfetti(parent,colors){
 function nextIP(){
   impS.cur++;
   if(impS.cur>=players.length){
-    // Reset card before going to discuss
     const flip=document.getElementById('sbox-flip');
     flip.classList.remove('flipped');
     document.getElementById('isword').textContent='????';
     document.getElementById('islbl').textContent='';
     document.getElementById('irbanner').style.display='none';
     document.getElementById('isbox').className='sbox-back';
-    const flip2=document.getElementById('sbox-flip');
-    flip2.classList.remove('glow-citizen','glow-impostor');
+    document.getElementById('sbox-flip').classList.remove('glow-citizen','glow-impostor');
     showIP('discuss');
   } else showNextI();
 }
-function startIV(){
+async function startIV(){
+  if(LB.id && !LB.isHost){toast('Nur der Host kann zur Abstimmung wechseln!');return;}
+  if(LB.id && LB.isHost){
+    await sbREST('lobbies','PATCH','id=eq.'+LB.id,{
+      options:{ event:'imp_vote', players, _ts:Date.now() }
+    }).catch(()=>{});
+  }
   const g=document.getElementById('ipvgrid');
   g.innerHTML=players.map((p,i)=>`<div class="vpb" id="ipv${i}" onclick="voteI(${i})"><div class="dot" style="background:${PC[i%PC.length]};width:8px;height:8px;border-radius:50%;flex-shrink:0"></div>${p}<span style="margin-left:auto;color:var(--muted);font-size:.79rem" id="ipvc${i}"></span></div>`).join('');
   showIP('vote');
 }
-function voteI(idx){
+async function voteI(idx){
   impS.votes[idx]=(impS.votes[idx]||0)+1;
   players.forEach((_,i)=>{const c=document.getElementById('ipvc'+i);const n=impS.votes[i]||0;if(c)c.textContent=n>0?n+'×':'';});
   document.querySelectorAll('.vpb').forEach(b=>b.classList.remove('voted'));
   document.getElementById('ipv'+idx)?.classList.add('voted');
+  // Sync votes to all players online
+  if(LB.id){
+    await sbREST('lobbies','PATCH','id=eq.'+LB.id,{
+      options:{ event:'imp_votes', votes: impS.votes, players, _ts:Date.now() }
+    }).catch(()=>{});
+  }
 }
-function revealIR(){
+async function revealIR(){
+  if(LB.id && !LB.isHost){toast('Nur der Host kann das Ergebnis enthüllen!');return;}
   if(!Object.keys(impS.votes).length){toast('Stimmt erst ab!');return;}
   const max=Math.max(...Object.values(impS.votes));
   const ai=parseInt(Object.entries(impS.votes).find(([,v])=>v===max)?.[0]);
@@ -2476,12 +2682,41 @@ function revealIR(){
   document.getElementById('ipre').textContent=correct?'🎉':'😈';
   document.getElementById('iprt').textContent=correct?'Imposter erwischt!':'Imposter entkommen!';
   document.getElementById('iprp').innerHTML=correct
-    ?`<strong>${accused}</strong> war der Imposter!<br>Das Wort war <strong>"${impS.wd.w}"</strong> — sein Hinweis war <strong>"${impS.wd.h}"</strong>.${drinkMode?' Der Imposter trinkt!':''}`
+    ?`<strong>${accused}</strong> war der Imposter!<br>Das Wort war <strong>"${impS.wd?.w||'?'}"</strong> — sein Hinweis war <strong>"${impS.wd?.h||'?'}"</strong>.${drinkMode?' Der Imposter trinkt!':''}`
     :`<strong>${accused}</strong> war unschuldig!<br><strong>${imp}</strong> war der echte Imposter!${drinkMode?' Alle anderen trinken!':''}`;
   document.getElementById('ippunish').innerHTML=correct?punishHTML(imp):punishHTML(players.filter(p=>p!==imp).join(' & '));
+  if(LB.id){
+    await sbREST('lobbies','PATCH','id=eq.'+LB.id,{
+      options:{ event:'imp_result', correct, accused, imp, word: impS.wd?.w, hint: impS.wd?.h, _ts:Date.now() }
+    }).catch(()=>{});
+  }
   showIP('result');
 }
 function restartI(){startImp();}
+
+// Guest receives their word from host's imp_start event
+function impGuestReceiveWord(opts) {
+  const myName = LB.myName || '';
+  const pl = opts.players || players;
+  const myIdx = pl.indexOf(myName);
+  // Update local players list from lobby
+  if (opts.players) players = opts.players;
+  // Set impS for this player
+  impS.impIdx = opts.impIdx;
+  impS.wd = { w: opts.word, h: opts.hint };
+  impS.votes = {};
+  impS.myRevealed = false;
+  if (myIdx === -1) {
+    // Player not found in list — still show the card but as citizen
+    impS.myIsImp = false;
+    impS.myWord = opts.word;
+    toast('Spielername nicht gefunden — als Bürger eingestuft');
+  } else {
+    impS.myIsImp = (myIdx === opts.impIdx);
+    impS.myWord = impS.myIsImp ? opts.hint : opts.word;
+  }
+  showImpOnlineMyWord();
+}
 
 // ═══════ ICH HABE NOCH NIE ═══════
 let ihI=0,ihS=[];
@@ -5540,22 +5775,22 @@ function bqBuildPool(seed) {
   });
   if (pool.length < 4) pool = [...BQ_DATA.general];
 
-  // Remove already-seen questions this session
-  let unseen = pool.filter(q => !_bqSessionSeen.has(q.q));
-  // If fewer than totalQ unseen questions, reset the seen tracker
-  if (unseen.length < bqState.totalQ) {
-    _bqSessionSeen.clear();
-    unseen = pool;
-  }
-
   let chosen;
   if (seed !== undefined) {
-    chosen = bqSeededShuffle([...unseen], seed).slice(0, bqState.totalQ);
+    // Online mode: seed guarantees ALL players get the exact same question order
+    // Skip seen-tracking here so host & guests always get the same pool
+    chosen = bqSeededShuffle([...pool], seed).slice(0, bqState.totalQ);
   } else {
+    // Offline mode: remove already-seen questions this session
+    let unseen = pool.filter(q => !_bqSessionSeen.has(q.q));
+    if (unseen.length < bqState.totalQ) {
+      _bqSessionSeen.clear();
+      unseen = pool;
+    }
     chosen = [...unseen].sort(() => Math.random() - .5).slice(0, bqState.totalQ);
+    // Mark chosen as seen for offline sessions
+    chosen.forEach(q => _bqSessionSeen.add(q.q));
   }
-  // Mark chosen questions as seen
-  chosen.forEach(q => _bqSessionSeen.add(q.q));
   return chosen;
 }
 
@@ -5772,6 +6007,9 @@ async function bqAnswer(i){
     if(navigator.vibrate) navigator.vibrate(80);
   }
 
+  // Store my answer for review
+  bqState._myLastAnswer = { idx: i, correct, pts, answerText: shuffled[i].t };
+
   // Online: submit answer to Supabase
   if(bqState.lobbyMode && LB.id){
     try {
@@ -5784,6 +6022,7 @@ async function bqAnswer(i){
         correct,
         points: pts,
         time_left: bqState.timeLeft,
+        answer_text: shuffled[i].t,
       });
     } catch(e) {}
     // Immediately fetch updated scoreboard
@@ -5791,7 +6030,90 @@ async function bqAnswer(i){
   }
 
   bqRenderScoreboard();
-  setTimeout(() => { bqState.questionIdx++; bqShowQuestion(); }, 1800);
+
+  // In online mode: wait a bit then show review before advancing
+  if(bqState.lobbyMode){
+    setTimeout(async () => {
+      await bqFetchScores();
+      bqShowQuestionReview();
+    }, 1200);
+  } else {
+    setTimeout(() => { bqState.questionIdx++; bqShowQuestion(); }, 1800);
+  }
+}
+
+// Show per-question review (online mode only) — shows who answered what + live scores
+async function bqShowQuestionReview(){
+  if(!bqState.lobbyMode) return;
+
+  const q = bqState.pool[bqState.questionIdx];
+  const correctText = bqState._shuffled?.find(s=>s.correct)?.t || q?.a[q?.c] || '?';
+
+  // Fetch answers for this question with a small delay to let all players submit
+  await new Promise(r => setTimeout(r, 800));
+  let reviewRows = [];
+  try {
+    reviewRows = await sbREST('bq_answers','GET',
+      `session_id=eq.${LB.id}&question_idx=eq.${bqState.questionIdx}&order=points.desc`) || [];
+  } catch(e){}
+
+  const reviewHtml = reviewRows.length ? reviewRows.map(r => {
+    const icon = r.correct ? '✅' : (r.answer_idx===-1 ? '⏱' : '❌');
+    const color = r.correct ? 'var(--g)' : (r.answer_idx===-1 ? 'var(--muted)' : 'var(--r)');
+    const pts = r.points > 0 ? `<span style="color:var(--g);font-weight:700;font-size:.78rem">+${r.points}</span>` : '';
+    const isMe = r.player_name === bqState.myName;
+    return `<div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:${isMe?'rgba(124,92,252,.12)':'var(--s2)'};border:1px solid ${isMe?'rgba(124,92,252,.3)':'var(--border)'};border-radius:var(--radxs);margin-bottom:5px">
+      <span style="font-size:1.05rem">${icon}</span>
+      <span style="flex:1;font-size:.85rem;font-weight:${isMe?'700':'400'}">${r.player_name}${isMe?' 👈':''}</span>
+      ${r.answer_text && r.answer_text !== '—' ? `<span style="font-size:.72rem;color:${color};max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.answer_text}</span>` : ''}
+      ${pts}
+    </div>`;
+  }).join('') : '<div style="color:var(--muted);font-size:.8rem;padding:4px 0">Keine Antworten eingegangen…</div>';
+
+  const feedbackEl = document.getElementById('bq-feedback');
+  if(feedbackEl){
+    feedbackEl.innerHTML = `
+      <div style="text-align:left;margin-top:10px">
+        <div style="font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">✅ Richtig: <strong style="color:var(--g)">${correctText}</strong></div>
+        ${reviewHtml}
+      </div>`;
+  }
+
+  // Update live scoreboard
+  await bqFetchScores();
+  bqRenderScoreboard();
+
+  // Host waits 5s to let everyone read results, then advances
+  if(LB.isHost){
+    // Countdown display
+    let countdown = 5;
+    const countEl = document.createElement('div');
+    countEl.style.cssText = 'text-align:center;color:var(--muted);font-size:.8rem;margin-top:8px';
+    countEl.textContent = `Weiter in ${countdown}s…`;
+    if(feedbackEl) feedbackEl.appendChild(countEl);
+
+    const countTimer = setInterval(() => {
+      countdown--;
+      if(countEl) countEl.textContent = countdown > 0 ? `Weiter in ${countdown}s…` : 'Nächste Frage…';
+      if(countdown <= 0) clearInterval(countTimer);
+    }, 1000);
+
+    setTimeout(async () => {
+      bqState.questionIdx++;
+      // Signal new question index to all guests via session update
+      try {
+        await sbREST('bq_sessions','PATCH','id=eq.'+LB.id,{
+          question_idx: bqState.questionIdx,
+          state: bqState.questionIdx >= bqState.pool.length ? 'done' : 'question',
+          question_started_at: new Date().toISOString(),
+        });
+      } catch(e){}
+      bqShowQuestion();
+    }, 5000);
+  } else {
+    // Guests: wait for host to advance question_idx in session
+    bqState._waitingForNext = true;
+  }
 }
 
 function bqTimeUp(){
@@ -5800,17 +6122,25 @@ function bqTimeUp(){
   const ans = document.querySelectorAll('.bq-ans');
   ans.forEach((el,j) => { el.classList.add('locked'); if(bqState._shuffled[j].correct) el.classList.add('correct'); });
   document.getElementById('bq-feedback').innerHTML = '<span style="color:var(--muted)">⏱ Zeit abgelaufen!</span>';
+  bqState._myLastAnswer = { idx: -1, correct: false, pts: 0 };
   // Online: submit "no answer"
   if(bqState.lobbyMode && LB.id && LB.myId){
     const myName = bqState.myName;
     sbREST('bq_answers', 'POST', '', {
       session_id: LB.id, question_idx: bqState.questionIdx,
       player_id: LB.myId, player_name: myName,
-      answer_idx: -1, correct: false, points: 0, time_left: 0,
+      answer_idx: -1, correct: false, points: 0, time_left: 0, answer_text: '—',
     }).catch(()=>{});
   }
   bqRenderScoreboard();
-  setTimeout(() => { bqState.questionIdx++; bqShowQuestion(); }, 1800);
+  if(bqState.lobbyMode){
+    setTimeout(async () => {
+      await bqFetchScores();
+      bqShowQuestionReview();
+    }, 1000);
+  } else {
+    setTimeout(() => { bqState.questionIdx++; bqShowQuestion(); }, 1800);
+  }
 }
 
 // Fetch all answers from Supabase and build scoreboard
@@ -5820,7 +6150,6 @@ async function bqFetchScores(){
     const rows = await sbREST('bq_answers', 'GET',
       'session_id=eq.' + LB.id + '&order=player_name,question_idx');
     if(!rows) return;
-    // Aggregate: sum points per player, track current streak
     const scoreMap = {};
     rows.forEach(r => {
       if(!scoreMap[r.player_name]) scoreMap[r.player_name] = {pts:0, streak:0, lastQ:-1};
@@ -5832,11 +6161,9 @@ async function bqFetchScores(){
       }
       scoreMap[r.player_name].lastQ = r.question_idx;
     });
-    // Merge with local (own score is local-authoritative)
     const myName = bqState.myName;
     Object.entries(scoreMap).forEach(([name, s]) => {
       if(name === myName) {
-        // Trust local score, but update others
         if(!bqState.playerScores[name]) bqState.playerScores[name] = {pts:bqState.score, streak:bqState.streak};
       } else {
         bqState.playerScores[name] = s;
@@ -5846,7 +6173,7 @@ async function bqFetchScores(){
   } catch(e){}
 }
 
-// Online polling for guests: watch for bq_start event
+// Online polling for guests
 async function bqOnlinePoll(){
   if(!LB.id) return;
   try {
@@ -5858,11 +6185,29 @@ async function bqOnlinePoll(){
       clearInterval(bqState.pollTimer);
       bqGuestStart(opts);
     }
-    // Fetch scoreboard during game
+    // Fetch scoreboard during game (every 2s)
     if(bqState.phase === 'running' && Date.now() - bqState._lastAnswerFetch > 2000){
       bqState._lastAnswerFetch = Date.now();
       await bqFetchScores();
       bqRenderScoreboard();
+    }
+    // Guest: check if host advanced to next question
+    if(bqState.phase === 'running' && !LB.isHost && bqState._waitingForNext){
+      try {
+        const sessRows = await sbREST('bq_sessions','GET','id=eq.'+LB.id+'&select=question_idx,state');
+        if(sessRows?.length){
+          const serverIdx = sessRows[0].question_idx;
+          const serverState = sessRows[0].state;
+          if(serverState === 'done'){
+            bqState._waitingForNext = false;
+            bqShowResults();
+          } else if(serverIdx > bqState.questionIdx){
+            bqState._waitingForNext = false;
+            bqState.questionIdx = serverIdx;
+            bqShowQuestion();
+          }
+        }
+      } catch(e){}
     }
   } catch(e){}
 }
@@ -5871,14 +6216,19 @@ function bqRenderScoreboard(){
   const el = document.getElementById('bq-scoreboard');
   if(!el) return;
   const scores = Object.entries(bqState.playerScores).sort((a,b) => b[1].pts - a[1].pts);
+  // Single player offline: compact display
   if(scores.length <= 1 && !bqState.lobbyMode){
     el.innerHTML = `<div class="bq-score-row"><div class="bq-score-name">${bqState.myName}</div><div><span class="bq-score-pts">${bqState.score}</span></div></div>`;
     return;
   }
+  if(!scores.length) return;
   const medals = ['🥇','🥈','🥉'];
-  el.innerHTML = scores.map(([name,s],i) =>
+  const header = bqState.lobbyMode
+    ? `<div style="font-size:.66rem;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;font-family:'Syne',sans-serif">📊 Live-Punkte</div>`
+    : '';
+  el.innerHTML = header + scores.map(([name,s],i) =>
     `<div class="bq-score-row ${name===bqState.myName?'me':''}">
-      <div class="bq-score-name">${medals[i]||'  '} ${name}</div>
+      <div class="bq-score-name">${medals[i]||`<span style="color:var(--muted);font-size:.8rem">${i+1}.</span>`} ${name}</div>
       <div><span class="bq-score-pts">${s.pts}</span>${s.streak>1?`<span class="bq-score-streak">🔥${s.streak}</span>`:''}</div>
     </div>`
   ).join('');
@@ -6177,6 +6527,10 @@ async function lbRefresh() {
           if(typeof bqGuestStart === 'function') bqGuestStart(opts);
         }, 300);
       }
+      // For Imposter: load word for this guest
+      if (LB.game === 'imp' && opts && opts.event === 'imp_start') {
+        setTimeout(() => impGuestReceiveWord(opts), 400);
+      }
       // Keep polling for in-game sync
     }
     
@@ -6208,6 +6562,18 @@ async function lbRefresh() {
       LB._lastSyncTs = opts._syncTs;
       lbApplySync(opts);
     }
+    // Imposter: handle events for guests already on the imp page (no _syncTs needed)
+    if (!LB.isHost && LB.game === 'imp' && opts.event && opts._ts !== LB._lastImpTs) {
+      LB._lastImpTs = opts._ts;
+      const activePage = document.querySelector('.page.active')?.id?.replace('page-','');
+      if (activePage === 'imp') {
+        if (opts.event === 'imp_start' && !LB.navigated) {
+          impGuestReceiveWord(opts);
+        } else if (['imp_discuss','imp_vote','imp_votes','imp_result'].includes(opts.event)) {
+          lbApplySync({ game: 'imp', ...opts });
+        }
+      }
+    }
     
     // If game went back to idle and guest is on a game page, navigate back
     if (lobby.state === 'idle' && !LB.isHost) {
@@ -6227,7 +6593,7 @@ function lbApplySync(opts) {
   if (!opts || !opts.game) return;
   const game = opts.game;
   const q = opts.q; // the actual question text/object
-  if (!q) return;
+  // Note: q can be null for event-based games (imp)
   
   try {
     if (game === 'ww' && document.getElementById('wwq')) {
@@ -6261,23 +6627,27 @@ function lbApplySync(opts) {
         badge.className = 'tbadge ' + (opts.wopType === 'truth' ? 't' : 'd');
       }
     } else if (game === 'imp') {
-      // For imposter: if it's a word pair, show the word to this guest
-      if (opts.impWord && document.getElementById('ip-show')) {
-        const myWordEl = document.getElementById('ip-my-word');
-        if (myWordEl) myWordEl.textContent = opts.impWord;
-        // Show discussion phase
-        if (opts.impPhase === 'discuss' || opts.impPhase === 'show') {
-          const showEl = document.getElementById('ip-show');
-          if (showEl) showEl.classList.add('on');
-        }
-      }
-      // Phase transitions  
-      if (opts.impPhase === 'vote' && document.getElementById('ip-vote')) {
-        ['ip-setup','ip-show','ip-discuss'].forEach(id => {
-          const el = document.getElementById(id); if (el) el.classList.remove('on');
-        });
-        const vote = document.getElementById('ip-vote');
-        if (vote) vote.classList.add('on');
+      // Phase transitions for Imposter online
+      if (opts.impPhase === 'discuss' || opts.event === 'imp_discuss') {
+        showIP('discuss');
+      } else if (opts.event === 'imp_vote' || opts.impPhase === 'vote') {
+        const g=document.getElementById('ipvgrid');
+        const pl = opts.players || players;
+        if(g) g.innerHTML=pl.map((p,i)=>`<div class="vpb" id="ipv${i}" onclick="voteI(${i})"><div class="dot" style="background:${PC[i%PC.length]};width:8px;height:8px;border-radius:50%;flex-shrink:0"></div>${p}<span style="margin-left:auto;color:var(--muted);font-size:.79rem" id="ipvc${i}"></span></div>`).join('');
+        showIP('vote');
+      } else if (opts.event === 'imp_votes') {
+        // Sync votes from host
+        impS.votes = opts.votes || {};
+        const pl = opts.players || players;
+        pl.forEach((_,i)=>{const c=document.getElementById('ipvc'+i);const n=impS.votes[i]||0;if(c)c.textContent=n>0?n+'×':'';});
+      } else if (opts.event === 'imp_result') {
+        document.getElementById('ipre').textContent = opts.correct?'🎉':'😈';
+        document.getElementById('iprt').textContent = opts.correct?'Imposter erwischt!':'Imposter entkommen!';
+        document.getElementById('iprp').innerHTML = opts.correct
+          ?`<strong>${opts.accused}</strong> war der Imposter!<br>Das Wort war <strong>"${opts.word||'?'}"</strong> — sein Hinweis war <strong>"${opts.hint||'?'}"</strong>.`
+          :`<strong>${opts.accused}</strong> war unschuldig!<br><strong>${opts.imp}</strong> war der echte Imposter!`;
+        document.getElementById('ippunish').innerHTML='';
+        showIP('result');
       }
     }
   } catch(e) { /* silent */ }
